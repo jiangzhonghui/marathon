@@ -9,13 +9,13 @@ import com.github.fge.jsonschema.main.JsonSchemaFactory
 
 import javax.validation.ConstraintValidatorContext
 
-import mesosphere.marathon.api.v2.json.MarathonModule
 import mesosphere.jackson.CaseClassModule
+import mesosphere.marathon.api.v2.json.{ MarathonModule, V2AppDefinition }
 import mesosphere.marathon.MarathonSpec
 import mesosphere.marathon.state.{ Container, PathId, AppDefinition }
 
-class AppDefinitionValidatorTest extends MarathonSpec {
-  var validator: AppDefinitionValidator = _
+class V2AppDefinitionValidatorTest extends MarathonSpec {
+  var validator: V2AppDefinitionValidator = _
   var mapper: ObjectMapper = _
 
   val appDefJson = "/mesosphere/marathon/api/v2/AppDefinition.json"
@@ -24,7 +24,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   val schema = factory.getJsonSchema(appDefinition)
 
   before {
-    validator = new AppDefinitionValidator
+    validator = new V2AppDefinitionValidator
     mapper = new ObjectMapper
     mapper.registerModule(DefaultScalaModule)
     mapper.registerModule(new MarathonModule)
@@ -39,7 +39,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("only cmd") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       cmd = Some("true"))
     assert(validator.isValid(app, mock[ConstraintValidatorContext]))
@@ -47,7 +47,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("only args") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       args = Some("test" :: Nil))
     assert(validator.isValid(app, mock[ConstraintValidatorContext]))
@@ -55,7 +55,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("only container") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       container = Some(Container(
         docker = Some(Container.Docker(image = "test/image"))
@@ -65,7 +65,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("empty container is invalid") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       container = Some(Container()))
     assert(!validator.isValid(app, mock[ConstraintValidatorContext]))
@@ -73,7 +73,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("container and cmd") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       cmd = Some("true"),
       container = Some(Container()))
@@ -82,7 +82,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("container and args") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       args = Some("test" :: Nil),
       container = Some(Container()))
@@ -91,7 +91,7 @@ class AppDefinitionValidatorTest extends MarathonSpec {
   }
 
   test("container, cmd and args is not valid") {
-    val app = AppDefinition(
+    val app = V2AppDefinition(
       id = PathId("/test"),
       cmd = Some("true"),
       args = Some("test" :: Nil),

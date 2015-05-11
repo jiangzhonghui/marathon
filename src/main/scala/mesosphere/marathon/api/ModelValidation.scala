@@ -7,6 +7,7 @@ import mesosphere.marathon.MarathonSchedulerService
 import scala.reflect.ClassTag
 import scala.util.{ Failure, Success, Try }
 
+import mesosphere.marathon.api.v2.json.{ V2AppDefinition, V2Group }
 import mesosphere.marathon.api.v2.{ AppUpdate, GroupUpdate }
 import mesosphere.marathon.state._
 
@@ -17,10 +18,17 @@ import BeanValidation._
   */
 object ModelValidation {
 
+  // TODO: Re-implement this method on it's own terms
   def checkGroup(
     group: Group,
+    path: String,
+    parent: PathId): Iterable[ConstraintViolation[V2Group]] =
+    checkGroup(V2Group(group), path, parent)
+
+  def checkGroup(
+    group: V2Group,
     path: String = "",
-    parent: PathId = PathId.empty): Iterable[ConstraintViolation[Group]] = {
+    parent: PathId = PathId.empty): Iterable[ConstraintViolation[V2Group]] = {
     val base = group.id.canonicalPath(parent)
     validate(group,
       idErrors(group, base, group.id, "id"),
@@ -86,8 +94,8 @@ object ModelValidation {
   def noAppsAndGroupsWithSameName[T](
     t: T,
     path: String,
-    apps: Set[AppDefinition],
-    groups: Set[Group])(implicit ct: ClassTag[T]): Iterable[ConstraintViolation[_]] = {
+    apps: Set[V2AppDefinition],
+    groups: Set[V2Group])(implicit ct: ClassTag[T]): Iterable[ConstraintViolation[_]] = {
     val groupIds = groups.map(_.id)
     val clashingIds = apps.map(_.id).filter(groupIds.contains)
     isTrue(
@@ -100,14 +108,14 @@ object ModelValidation {
   }
 
   def noCyclicDependencies(
-    group: Group,
-    path: String): Iterable[ConstraintViolation[Group]] = {
+    group: V2Group,
+    path: String): Iterable[ConstraintViolation[V2Group]] = {
     isTrue(
       group,
       group.dependencies,
       path,
       "Dependency graph has cyclic dependencies",
-      group.hasNonCyclicDependencies)
+      group.toGroup.hasNonCyclicDependencies)
   }
 
   def checkGroupUpdates(
@@ -120,9 +128,9 @@ object ModelValidation {
     }
 
   def checkGroups(
-    groups: Iterable[Group],
+    groups: Iterable[V2Group],
     path: String = "res",
-    parent: PathId = PathId.empty): Iterable[ConstraintViolation[Group]] =
+    parent: PathId = PathId.empty): Iterable[ConstraintViolation[V2Group]] =
     groups.zipWithIndex.flatMap {
       case (group, pos) =>
         checkGroup(group, s"$path[$pos].", parent)
@@ -148,9 +156,9 @@ object ModelValidation {
   }
 
   def checkApps(
-    apps: Iterable[AppDefinition],
+    apps: Iterable[V2AppDefinition],
     path: String = "res",
-    parent: PathId = PathId.empty): Iterable[ConstraintViolation[AppDefinition]] =
+    parent: PathId = PathId.empty): Iterable[ConstraintViolation[V2AppDefinition]] =
     apps.zipWithIndex.flatMap {
       case (app, pos) =>
         checkAppConstraints(app, parent, s"$path[$pos].")
@@ -189,8 +197,8 @@ object ModelValidation {
     )
   }
 
-  def checkAppConstraints(app: AppDefinition, parent: PathId,
-                          path: String = ""): Iterable[ConstraintViolation[AppDefinition]] =
+  def checkAppConstraints(app: V2AppDefinition, parent: PathId,
+                          path: String = ""): Iterable[ConstraintViolation[V2AppDefinition]] =
     validate(app,
       idErrors(app, parent, app.id, path + "id"),
       checkPath(app, parent, app.id, path + "id"),
@@ -267,8 +275,8 @@ object ModelValidation {
     * Returns a non-empty list of validation messages if the given app definition
     * will conflict with existing apps.
     */
-  def checkAppConflicts(app: AppDefinition, baseId: PathId, service: MarathonSchedulerService): Seq[String] = {
-    app.containerServicePorts().toSeq.flatMap { servicePorts =>
+  def checkAppConflicts(app: V2AppDefinition, baseId: PathId, service: MarathonSchedulerService): Seq[String] = {
+    app.toAppDefinition().containerServicePorts().toSeq.flatMap { servicePorts =>
       checkServicePortConflicts(baseId, servicePorts, service)
     }
   }

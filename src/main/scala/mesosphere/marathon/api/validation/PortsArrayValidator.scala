@@ -13,7 +13,10 @@ class PortsArrayValidator
 
   def initialize(annotation: PortsArray): Unit = {}
 
-  def isValid(obj: Any, context: ConstraintValidatorContext): Boolean =
+  def isValid(obj: Any, context: ConstraintValidatorContext): Boolean = {
+
+    println(s"validating ports array: $obj")
+
     obj match {
       case opt: Option[_] => opt.forall { isValid(_, context) }
       case it: Iterable[_] => {
@@ -22,5 +25,6 @@ class PortsArrayValidator
       }
       case _ => false
     }
+  }
 
 }

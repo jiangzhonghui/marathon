@@ -5,7 +5,7 @@ import mesosphere.marathon.api.v2.AppUpdate
 import org.scalatest.Matchers
 import play.api.libs.json.{ Json, JsResultException }
 
-class AppUpdateFormatTest extends MarathonSpec with Matchers {
+class V2AppUpdateFormatTest extends MarathonSpec with Matchers {
   import Formats._
 
   // regression test for #1176

@@ -8,16 +8,16 @@ import mesosphere.marathon.state.Timestamp
 import org.scalatest.Matchers
 import play.api.libs.json._
 
-class AppDefinitionFormatsTest
+class V2AppDefinitionFormatsTest
     extends MarathonSpec
-    with AppDefinitionFormats
+    with V2Formats
     with HealthCheckFormats
     with Matchers {
 
   import Formats.PathIdFormat
 
   object Fixture {
-    val a1 = AppDefinition(
+    val a1 = V2AppDefinition(
       id = "app1".toPath,
       cmd = Some("sleep 10"),
       version = Timestamp(1)
@@ -68,7 +68,7 @@ class AppDefinitionFormatsTest
     import Fixture._
     import AppDefinition._
 
-    val r1 = j1.as[AppDefinition]
+    val r1 = j1.as[V2AppDefinition]
     // check supplied values
     r1.id should equal (a1.id)
     r1.cmd should equal (a1.cmd)
@@ -98,20 +98,20 @@ class AppDefinitionFormatsTest
 
   test("FromJSON should fail for empty id") {
     val json = Json.parse(""" { "id": "" }""")
-    a[JsResultException] shouldBe thrownBy { json.as[AppDefinition] }
+    a[JsResultException] shouldBe thrownBy { json.as[V2AppDefinition] }
   }
 
   test("FromJSON should fail when using / as an id") {
     val json = Json.parse(""" { "id": "/" }""")
-    a[JsResultException] shouldBe thrownBy { json.as[AppDefinition] }
+    a[JsResultException] shouldBe thrownBy { json.as[V2AppDefinition] }
   }
 
   test("FromJSON should fail when 'cpus' is less than or equal to 0") {
     var json1 = Json.parse(""" { "id": "test", "cpus": 0.0 }""")
-    a[JsResultException] shouldBe thrownBy { json1.as[AppDefinition] }
+    a[JsResultException] shouldBe thrownBy { json1.as[V2AppDefinition] }
 
     val json2 = Json.parse(""" { "id": "test", "cpus": -1.0 }""")
-    a[JsResultException] shouldBe thrownBy { json2.as[AppDefinition] }
+    a[JsResultException] shouldBe thrownBy { json2.as[V2AppDefinition] }
   }
 }
 

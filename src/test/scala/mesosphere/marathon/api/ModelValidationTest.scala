@@ -1,6 +1,7 @@
 package mesosphere.marathon.api
 
 import mesosphere.marathon.api.v2.GroupUpdate
+import mesosphere.marathon.api.v2.json.V2AppDefinition
 import mesosphere.marathon.state.Container.Docker.PortMapping
 import mesosphere.marathon.state.Container._
 import mesosphere.marathon.state.PathId._
@@ -29,7 +30,7 @@ class ModelValidationTest
 
     val existingApp = createServicePortApp("/app1".toPath, 3200)
     val service = mock[MarathonSchedulerService]
-    when(service.listApps()).thenReturn(List(existingApp))
+    when(service.listApps()).thenReturn(List(existingApp.toAppDefinition()))
 
     val conflictingApp = createServicePortApp("/app2".toPath, 3200)
     val validations = ModelValidation.checkAppConflicts(conflictingApp, conflictingApp.id, service)
@@ -41,7 +42,7 @@ class ModelValidationTest
 
     val existingApp = createServicePortApp("/app1".toPath, 3200)
     val service = mock[MarathonSchedulerService]
-    when(service.listApps()).thenReturn(List(existingApp))
+    when(service.listApps()).thenReturn(List(existingApp.toAppDefinition()))
 
     val conflictingApp = createServicePortApp("/app2".toPath, 3201)
     val validations = ModelValidation.checkAppConflicts(conflictingApp, conflictingApp.id, service)
@@ -50,10 +51,9 @@ class ModelValidationTest
   }
 
   test("Model validation should check for application conflicts") {
-
     val existingApp = createServicePortApp("/app1".toPath, 3200)
     val service = mock[MarathonSchedulerService]
-    when(service.listApps()).thenReturn(List(existingApp))
+    when(service.listApps()).thenReturn(List(existingApp.toAppDefinition()))
 
     val conflictingApp = existingApp.copy(id = "/app2".toPath)
     val validations = ModelValidation.checkAppConflicts(conflictingApp, conflictingApp.id, service)
@@ -67,8 +67,8 @@ class ModelValidationTest
     result.head.getMessage should be("Given group is empty!")
   }
 
-  private def createServicePortApp(id: PathId, servicePort: Int) = {
-    AppDefinition(
+  private def createServicePortApp(id: PathId, servicePort: Int) =
+    V2AppDefinition(
       id,
       container = Some(Container(
         docker = Some(Docker(
@@ -78,5 +78,5 @@ class ModelValidationTest
         ))
       ))
     )
-  }
+
 }

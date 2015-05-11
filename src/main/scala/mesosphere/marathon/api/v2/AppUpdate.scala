@@ -2,6 +2,7 @@ package mesosphere.marathon.api.v2
 
 import java.lang.{ Integer => JInt, Double => JDouble }
 
+import mesosphere.marathon.api.v2.json.V2AppDefinition
 import mesosphere.marathon.api.validation.FieldConstraints._
 import mesosphere.marathon.health.HealthCheck
 import mesosphere.marathon.Protos.Constraint
@@ -82,7 +83,14 @@ case class AppUpdate(
     * Returns the supplied [[mesosphere.marathon.state.AppDefinition]] after
     * updating its members with respect to this update request.
     */
-  def apply(app: AppDefinition): AppDefinition = app.copy(
+  def apply(app: AppDefinition): AppDefinition =
+    apply(V2AppDefinition(app)).toAppDefinition
+
+  /**
+    * Returns the supplied [[mesosphere.marathon.api.v2.json.V2AppDefinition]]
+    * after updating its members with respect to this update request.
+    */
+  def apply(app: V2AppDefinition): V2AppDefinition = app.copy(
     app.id,
     cmd.orElse(app.cmd),
     args.orElse(app.args),

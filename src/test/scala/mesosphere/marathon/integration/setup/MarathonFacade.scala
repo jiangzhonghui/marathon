@@ -5,6 +5,7 @@ import java.util.Date
 import akka.actor.ActorSystem
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import mesosphere.marathon.api.v2.{ AppUpdate, GroupUpdate }
+import mesosphere.marathon.api.v2.json.{ V2AppDefinition, V2Group }
 import mesosphere.marathon.event.http.EventSubscribers
 import mesosphere.marathon.event.{ Subscribe, Unsubscribe }
 import mesosphere.marathon.state.{ AppDefinition, Group, PathId, Timestamp }
@@ -41,9 +42,9 @@ class MarathonFacade(url: String, baseGroup: PathId, waitTime: Duration = 30.sec
 
   require(baseGroup.absolute)
 
-  implicit val appDefMarshaller = marshaller[AppDefinition]
+  implicit val v2appDefMarshaller = marshaller[V2AppDefinition]
   implicit val appUpdateMarshaller = marshaller[AppUpdate]
-  implicit val groupMarshaller = marshaller[Group]
+  implicit val v2groupMarshaller = marshaller[V2Group]
   implicit val groupUpdateMarshaller = marshaller[GroupUpdate]
   implicit val versionMarshaller = marshaller[ITDeploymentResult]
 
@@ -71,7 +72,7 @@ class MarathonFacade(url: String, baseGroup: PathId, waitTime: Duration = 30.sec
     result(pipeline(Get(getUrl)), waitTime)
   }
 
-  def createApp(app: AppDefinition): RestResult[AppDefinition] = {
+  def createAppV2(app: V2AppDefinition): RestResult[AppDefinition] = {
     requireInBaseGroup(app.id)
     val pipeline = sendReceive ~> read[AppDefinition]
     result(pipeline(Post(s"$url/v2/apps", app)), waitTime)

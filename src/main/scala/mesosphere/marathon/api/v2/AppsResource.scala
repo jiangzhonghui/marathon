@@ -10,7 +10,7 @@ import javax.ws.rs.core.{ Context, MediaType, Response }
 import akka.event.EventStream
 import com.codahale.metrics.annotation.Timed
 import mesosphere.marathon.api.{ BeanValidation, ModelValidation, RestResource }
-import mesosphere.marathon.api.v2.json.EnrichedTask
+import mesosphere.marathon.api.v2.json.{ EnrichedTask, V2AppDefinition, V2Group }
 import mesosphere.marathon.event.{ ApiPostEvent, EventModule }
 import mesosphere.marathon.health.{ HealthCheckManager, HealthCounts }
 import mesosphere.marathon.state.PathId._
@@ -35,7 +35,6 @@ class AppsResource @Inject() (
     val config: MarathonConf,
     groupManager: GroupManager) extends RestResource {
 
-  import AppsResource._
   import mesosphere.util.ThreadPoolContext.context
 
   val ListApps = """^((?:.+/)|)\*$""".r
@@ -53,7 +52,7 @@ class AppsResource @Inject() (
     val mapped = embed match {
       case EmbedTasks =>
         apps.map { app =>
-          val enrichedApp = app.withTasksAndDeployments(
+          val enrichedApp = V2AppDefinition(app).withTasksAndDeployments(
             enrichedTasks(app),
             healthCounts(app),
             runningDeployments
@@ -64,7 +63,7 @@ class AppsResource @Inject() (
       case EmbedTasksAndFailures =>
         apps.map { app =>
           WithTasksAndDeploymentsAndFailuresWrites.writes(
-            app.withTasksAndDeploymentsAndFailures(
+            V2AppDefinition(app).withTasksAndDeploymentsAndFailures(
               enrichedTasks(app),
               healthCounts(app),
               runningDeployments,
@@ -75,7 +74,7 @@ class AppsResource @Inject() (
 
       case _ =>
         apps.map { app =>
-          val enrichedApp = app.withTaskCountsAndDeployments(
+          val enrichedApp = V2AppDefinition(app).withTaskCountsAndDeployments(
             enrichedTasks(app),
             healthCounts(app),
             runningDeployments
@@ -91,7 +90,7 @@ class AppsResource @Inject() (
   @Timed
   def create(@Context req: HttpServletRequest, body: Array[Byte],
              @DefaultValue("false")@QueryParam("force") force: Boolean): Response = {
-    val app = Json.parse(body).as[AppDefinition]
+    val app = Json.parse(body).as[V2AppDefinition]
     service.getApp(app.id.copy(absolute = true)) match {
       case None =>
         val (_, managed) = create(req, app, force)
@@ -110,8 +109,8 @@ class AppsResource @Inject() (
 
   private def create(
     req: HttpServletRequest,
-    app: AppDefinition,
-    force: Boolean): (DeploymentPlan, AppDefinition.WithTasksAndDeployments) = {
+    app: V2AppDefinition,
+    force: Boolean): (DeploymentPlan, V2AppDefinition.WithTasksAndDeployments) = {
     val baseId = app.id.canonicalPath()
     BeanValidation.requireValid(ModelValidation.checkAppConstraints(app, baseId.parent))
 
@@ -121,7 +120,9 @@ class AppsResource @Inject() (
 
     maybePostEvent(req, app)
 
-    val managedApp = app.copy(
+    val modelApp = app.toAppDefinition()
+
+    val managedApp = modelApp.copy(
       id = baseId,
       dependencies = app.dependencies.map(_.canonicalPath(baseId))
     )
@@ -135,7 +136,7 @@ class AppsResource @Inject() (
       )
     )
 
-    val managedAppWithDeployments = managedApp.withTasksAndDeployments(
+    val managedAppWithDeployments = V2AppDefinition(managedApp).withTasksAndDeployments(
       appTasks = Nil,
       healthCounts = HealthCounts(0, 0, 0),
       runningDeployments = Seq(deploymentPlan)
@@ -152,7 +153,7 @@ class AppsResource @Inject() (
     def transitiveApps(gid: PathId): Response = {
       val apps = result(groupManager.group(gid)).map(group => group.transitiveApps).getOrElse(Nil)
       val withTasks = apps.map { app =>
-        val enrichedApp = app.withTasksAndDeploymentsAndFailures(
+        val enrichedApp = V2AppDefinition(app).withTasksAndDeploymentsAndFailures(
           enrichedTasks(app),
           healthCounts(app),
           runningDeployments,
@@ -165,7 +166,7 @@ class AppsResource @Inject() (
     }
     def app(): Response = service.getApp(id.toRootPath) match {
       case Some(app) =>
-        val mapped = app.withTasksAndDeploymentsAndFailures(
+        val mapped = V2AppDefinition(app).withTasksAndDeploymentsAndFailures(
           enrichedTasks(app),
           healthCounts(app),
           runningDeployments,
@@ -196,19 +197,24 @@ class AppsResource @Inject() (
 
     BeanValidation.requireValid(ModelValidation.checkUpdate(updateWithId, needsId = false))
 
-    service.getApp(appId) match {
+    service.getApp(appId).map(V2AppDefinition(_)) match {
       case Some(app) =>
         //if version is defined, replace with version
-        val update = updateWithId.version.flatMap(v => service.getApp(appId, v)).orElse(Some(updateWithId(app)))
+        val previousVersion: Option[V2AppDefinition] =
+          updateWithId.version.flatMap(service.getApp(appId, _).map(V2AppDefinition(_)))
+
+        val update = previousVersion.orElse(Some(updateWithId(app)))
+
         val response = update.map { updatedApp =>
           maybePostEvent(req, updatedApp)
-          val deployment = result(groupManager.updateApp(appId, _ => updatedApp, updatedApp.version, force))
+          val updatedModelApp = updatedApp.toAppDefinition()
+          val deployment = result(groupManager.updateApp(appId, _ => updatedModelApp, updatedApp.version, force))
           deploymentResult(deployment)
         }
         response.getOrElse(unknownApp(appId, updateWithId.version))
 
       case None =>
-        val (deploymentPlan, app) = create(req, updateWithId(AppDefinition(appId)), force)
+        val (deploymentPlan, app) = create(req, updateWithId(V2AppDefinition(appId)), force)
         deploymentResult(deploymentPlan, Response.created(new URI(app.id.toString)))
     }
   }
@@ -220,11 +226,13 @@ class AppsResource @Inject() (
     BeanValidation.requireValid(ModelValidation.checkUpdates(updates))
     val version = Timestamp.now()
     def updateApp(update: AppUpdate, app: AppDefinition): AppDefinition = {
-      update.version.flatMap(v => service.getApp(app.id, v)).orElse(Some(update(app))).getOrElse(app)
+      val previousVersion = update.version.flatMap(service.getApp(app.id, _))
+      previousVersion.orElse(Some(update(V2AppDefinition(app)).toAppDefinition())).getOrElse(app)
     }
     def updateGroup(root: Group): Group = updates.foldLeft(root) { (group, update) =>
+      val transform = (app: AppDefinition) => updateApp(update, app)
       update.id match {
-        case Some(id) => group.updateApp(id.canonicalPath(), updateApp(update, _), version)
+        case Some(id) => group.updateApp(id.canonicalPath(), transform, version)
         case None     => group
       }
     }
@@ -241,7 +249,7 @@ class AppsResource @Inject() (
     val appId = id.toRootPath
     service.getApp(appId) match {
       case Some(app) =>
-        maybePostEvent(req, AppDefinition(id = appId))
+        maybePostEvent(req, V2AppDefinition(id = appId))
         val deployment = result(groupManager.update(appId.parent, _.removeApplication(appId), force = force))
         deploymentResult(deployment)
 
@@ -298,8 +306,8 @@ class AppsResource @Inject() (
 
   private def healthCounts(app: AppDefinition): HealthCounts = result(healthCheckManager.healthCounts(app.id))
 
-  private def maybePostEvent(req: HttpServletRequest, app: AppDefinition) =
-    eventBus.publish(ApiPostEvent(req.getRemoteAddr, req.getRequestURI, app))
+  private def maybePostEvent(req: HttpServletRequest, app: V2AppDefinition) =
+    eventBus.publish(ApiPostEvent(req.getRemoteAddr, req.getRequestURI, app.toAppDefinition()))
 
   private[v2] def search(cmd: Option[String], id: Option[String], label: Option[String]): Iterable[AppDefinition] = {
     def containCaseInsensitive(a: String, b: String): Boolean = b.toLowerCase contains a.toLowerCase
@@ -312,35 +320,4 @@ class AppsResource @Inject() (
       appMatchesCmd && appMatchesId && appMatchesLabel
     }
   }
-}
-
-object AppsResource {
-  implicit val WithTaskCountsAndDeploymentsWrites: Writes[AppDefinition.WithTaskCountsAndDeployments] = Writes { app =>
-    val appJson = AppDefinitionWrites.writes(app).as[JsObject]
-
-    appJson ++ Json.obj(
-      "tasksStaged" -> app.tasksStaged,
-      "tasksRunning" -> app.tasksRunning,
-      "tasksHealthy" -> app.tasksHealthy,
-      "tasksUnhealthy" -> app.tasksUnhealthy,
-      "deployments" -> app.deployments
-    )
-  }
-
-  implicit val WithTasksAndDeploymentsWrites: Writes[AppDefinition.WithTasksAndDeployments] = Writes { app =>
-    val appJson = WithTaskCountsAndDeploymentsWrites.writes(app).as[JsObject]
-
-    appJson ++ Json.obj(
-      "tasks" -> app.tasks
-    )
-  }
-
-  implicit val WithTasksAndDeploymentsAndFailuresWrites: Writes[AppDefinition.WithTasksAndDeploymentsAndTaskFailures] =
-    Writes { app =>
-      val appJson = WithTasksAndDeploymentsWrites.writes(app).as[JsObject]
-
-      appJson ++ Json.obj(
-        "lastTaskFailure" -> app.lastTaskFailure
-      )
-    }
 }

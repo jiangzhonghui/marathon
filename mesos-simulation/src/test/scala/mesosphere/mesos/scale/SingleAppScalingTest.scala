@@ -42,10 +42,10 @@ class SingleAppScalingTest
   private[this] def createStopApp(instances: Int): Unit = {
     Given("a new app")
     val appIdPath: PathId = testBasePath / "/test/app"
-    val app = appProxy(appIdPath, "v1", instances = instances, withHealth = false)
+    val app = v2AppProxy(appIdPath, "v1", instances = instances, withHealth = false)
 
     When("the app gets posted")
-    val createdApp: RestResult[AppDefinition] = marathon.createApp(app)
+    val createdApp: RestResult[AppDefinition] = marathon.createAppV2(app)
     createdApp.code should be(201) // created
     val deploymentIds: Seq[String] = extractDeploymentIds(createdApp)
     deploymentIds.length should be(1)
@@ -74,8 +74,8 @@ class SingleAppScalingTest
     // for better grepability.
 
     val appIdPath = testBasePath / "/test/app"
-    val appWithManyInstances = appProxy(appIdPath, "v1", instances = 100000, withHealth = false)
-    val response = marathon.createApp(appWithManyInstances)
+    val appWithManyInstances = v2AppProxy(appIdPath, "v1", instances = 100000, withHealth = false)
+    val response = marathon.createAppV2(appWithManyInstances)
     log.info(s"XXX ${response.originalResponse.status}: ${response.originalResponse.entity}")
 
     val startTime = System.currentTimeMillis()
